@@ -70,6 +70,18 @@ func (d *HetznerCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
 // should not be processed by cluster autoscaler, or non-nil error if such
 // occurred. Must be implemented.
 func (d *HetznerCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.NodeGroup, error) {
+	nodeGroupId, exists := node.Labels[nodeGroupLabel]
+	if !exists {
+		if _, exists := node.Labels["instance.hetzner.cloud/is-root-server"]; exists {
+			return nil, nil
+		}
+	}
+
+	if node.Spec.ProviderID == "" {
+		klog.V(6).Infof("Skipping the search for node group for the node '%s' because it has no spec.ProviderID", node.Name)
+		return nil, nil
+	}
+
 	server, err := d.manager.serverForNode(node)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if server %s exists error: %v", node.Spec.ProviderID, err)
@@ -78,11 +90,11 @@ func (d *HetznerCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider
 	var groupId string
 	if server == nil {
 		klog.V(3).Infof("failed to find hcloud server for node %s", node.Name)
-		nodeGroupId, exists := node.Labels[nodeGroupLabel]
+
+		groupId = nodeGroupId
 		if !exists {
 			return nil, nil
 		}
-		groupId = nodeGroupId
 	} else {
 		serverGroupId, exists := server.Labels[nodeGroupLabel]
 		groupId = serverGroupId
